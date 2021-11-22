@@ -6,7 +6,7 @@ export {
     init, draw
 }
 
-import { vec3, flatten } from '../../../libs/MV.js';
+import { vec3, flatten } from './MV.js';
 
 const vertices = [
     vec3(-0.5, -0.5, +0.5),     // 0

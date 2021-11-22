@@ -1,46 +1,25 @@
-import { buildProgramFromSources, loadShadersFromURLS, setupWebGL } from "../../libs/utils.js";
-import { ortho, lookAt, flatten } from "../../libs/MV.js";
-import {multMatrix, multRotationY, multScale, multTranslation, popMatrix, pushMatrix, stack} from "./js/stack.js";
+import { buildProgramFromSources, loadShadersFromURLS, setupWebGL } from "../libs/utils.js";
+import { ortho, lookAt, flatten } from "../libs/MV.js";
+import {modelView, loadMatrix, multRotationY, multRotationX, multRotationZ, multScale, multTranslation, popMatrix, pushMatrix} from "../libs/stack.js";
 
-import * as SPHERE from './js/sphere.js';
+import * as SPHERE from '../../libs/sphere.js';
+import * as CUBE from '../../libs/cube.js';
+import * as CYLINDER from '../../libs/cylinder.js';
+import * as TORUS from '../../libs/torus.js';
 
 /** @type WebGLRenderingContext */
 let gl;
 
-let time = 0;           // Global simulation time in days
-let speed = 1/60.0;     // Speed (how many days added to time on each render pass
-let mode;               // Drawing mode (gl.LINES or gl.TRIANGLES)
-let animation = true;   // Animation is running
-
-const PLANET_SCALE = 10;    // scale that will apply to each planet and satellite
-const ORBIT_SCALE = 1/60.0;   // scale that will apply to each orbit around the sun
-
-const SUN_DIAMETER = 1391900;
-const SUN_DAY = 24.47; // At the equator. The poles are slower as the sun is gaseous
-
-const MERCURY_DIAMETER = 4866*PLANET_SCALE;
-const MERCURY_ORBIT = 57950000*ORBIT_SCALE;
-const MERCURY_YEAR = 87.97;
-const MERCURY_DAY = 58.646;
-
-const VENUS_DIAMETER = 12106*PLANET_SCALE;
-const VENUS_ORBIT = 108110000*ORBIT_SCALE;
-const VENUS_YEAR = 224.70;
-const VENUS_DAY = 243.018;
-
-const EARTH_DIAMETER = 12742*PLANET_SCALE;
-const EARTH_ORBIT = 149570000*ORBIT_SCALE;
-const EARTH_YEAR = 365.26;
-const EARTH_DAY = 0.99726968;
-
-const MOON_DIAMETER = 3474*PLANET_SCALE;
-const MOON_ORBIT = 363396*ORBIT_SCALE*60;
-const MOON_YEAR = 28;
-const MOON_DAY = 0;
-
-const VP_DISTANCE = EARTH_ORBIT;
-
-
+let mode;
+let ucolor;
+const VP_DISTANCE = 12;
+const LINE_SIZE = 20;
+const WHEELS = 8;
+const WHEEL_INITIAL_POS_X = 0.0;
+var lookAtX = VP_DISTANCE;
+var lookAtY = VP_DISTANCE;
+var lookAtZ = VP_DISTANCE;
+var normalX = 0;
 
 function setup(shaders)
 {
@@ -53,11 +32,14 @@ function setup(shaders)
 
     let mProjection = ortho(-VP_DISTANCE*aspect,VP_DISTANCE*aspect, -VP_DISTANCE, VP_DISTANCE,-3*VP_DISTANCE,3*VP_DISTANCE);
 
+    ucolor = gl.getUniformLocation(program, "ucolor");
+
     mode = gl.LINES; 
 
     resize_canvas();
     window.addEventListener("resize", resize_canvas);
 
+    
     document.onkeydown = function(event) {
         switch(event.key) {
             case 'w':
@@ -66,20 +48,41 @@ function setup(shaders)
             case 's':
                 mode = gl.TRIANGLES;
                 break;
-            case 'p':
-                animation = !animation;
+            case '4':
+                lookAtX = 0;
+                normalX = 1;
+                lookAtY = VP_DISTANCE;
+                lookAtZ = 0;
                 break;
-            case '+':
-                if(animation) speed *= 1.1;
+            case '3':
+                lookAtZ = 0;
+                lookAtY = 0;
+                lookAtX = VP_DISTANCE;
+                normalX = 1;
+                break;
+            case '2':
+                lookAtZ = 0;
+                lookAtX = 0;
+                lookAtY = 0;
+                normalX = 0;
+                break;
+            case '1':
+                lookAtX = VP_DISTANCE;
+                lookAtY = VP_DISTANCE;
+                lookAtZ = VP_DISTANCE;
+                normalX = 0;
                 break;
             case '-':
                 if(animation) speed /= 1.1;
                 break;
         }
     }
+    
 
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    SPHERE.init(gl);
+    CYLINDER.init(gl);
+    CUBE.init(gl);
+    TORUS.init(gl);
     gl.enable(gl.DEPTH_TEST);   // Enables Z-buffer depth test
     
     window.requestAnimationFrame(render);
@@ -98,95 +101,94 @@ function setup(shaders)
 
     function uploadModelView()
     {
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, "mModelView"), false, flatten(stack.modelView));
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, "mModelView"), false, flatten(modelView()));
     }
 
-    function Sun()
-    {
-        // Don't forget to scale the sun, rotate it around the y axis at the correct speed
-        // ..
-        multScale([SUN_DIAMETER, SUN_DIAMETER, SUN_DIAMETER]);
-        multRotationY(360*time/SUN_DAY);
-
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
-
-        // Draw a sphere representing the sun
-        SPHERE.draw(gl, program, mode);
-    }
-
-    function Mercury()
-    {
-         // Don't forget to scale the sun, rotate it around the y axis at the correct speed
-        // ..
-        multScale([MERCURY_DIAMETER, MERCURY_DIAMETER, MERCURY_DIAMETER]);
-        multRotationY(360*time/MERCURY_DAY);
-
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
-
-        // Draw a sphere representing the sun
-        SPHERE.draw(gl, program, mode);
-    }
-
-    function Venus()
-    {
-         // Don't forget to scale the sun, rotate it around the y axis at the correct speed
-        // ..
-        multScale([VENUS_DIAMETER, VENUS_DIAMETER, VENUS_DIAMETER]);
-        multRotationY(360*time/VENUS_DAY);
-
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
-
-        // Draw a sphere representing the sun
-        SPHERE.draw(gl, program, mode);
-    }
-
-    function TerraELua()
+    function LineBoard()
     {   
-        pushMatrix();
-                
-                Earth();
-        popMatrix();
+        for(var i = 0; i < LINE_SIZE; i++){
+            multTranslation([1.0,0.0,0.0]);
 
-        pushMatrix();
-                multRotationY(360*time/MOON_YEAR);
-                multTranslation([MOON_ORBIT, 0,0]);
-                Moon();
-        popMatrix();
+            // Send the current modelview matrix to the vertex shader
+            uploadModelView();
+
+            // Draw a cube
+            CUBE.draw(gl, program, mode);
+        }
     }
-
-    function Earth()
-    {
-         // Don't forget to scale the sun, rotate it around the y axis at the correct speed
-        // ..
-        multScale([EARTH_DIAMETER, EARTH_DIAMETER, EARTH_DIAMETER]);
-        multRotationY(360*time/EARTH_DAY);
+    function Board()
+    {   
+        multScale([1.0, 0.5, 1.0]);
+        var changeLine = -LINE_SIZE/2.0;
+        gl.uniform4fv(ucolor, [1.0,1.0,1.0,1.0]);
+        for(var i = 0; i < LINE_SIZE; i++){
+            pushMatrix();
+            multTranslation([-LINE_SIZE/2.0, 0.0, changeLine]);
+            LineBoard();
+            changeLine++;
+            popMatrix();
+        }
+    }
+    function Wheel() {
+        multTranslation([0.0, 1.0, 0.0]);
+        multRotationX(90); 
+        multScale([1.0, 1.0, 1.0]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
 
-        // Draw a sphere representing the sun
-        SPHERE.draw(gl, program, mode);
+        // Draw a cube
+        TORUS.draw(gl, program, mode);
     }
 
-    function Moon()
-    {
-         // Don't forget to scale the sun, rotate it around the y axis at the correct speed
-        // ..
-        multScale([MOON_DIAMETER, MOON_DIAMETER, MOON_DIAMETER]);
+    function Wheels(){
+        gl.uniform4fv(ucolor, [0.0,1.0,1.0,1.0]);
+        var z = 2.0;
+        var x = WHEEL_INITIAL_POS_X;
+        for(var i = 0; i < WHEELS; i++){
+            pushMatrix()
+            if(i == 4) {
+                z = -1.0;
+                x = WHEEL_INITIAL_POS_X;
+            }
+            x += 1.5;
+            multTranslation([x,0.0,z]);
+            Wheel();
+            popMatrix();
+        }
+    }
+
+    function Axis() {
+        multTranslation([0.0, 1.0, 0.0]);
+        multRotationX(90); 
+        multScale([1.0, 1.0, 1.0]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
 
-        // Draw a sphere representing the sun
-        SPHERE.draw(gl, program, mode);
+        // Draw a cube
+        CYLINDER.draw(gl, program, mode);
+    }
+
+    function WheelsAxles() {
+        gl.uniform4fv(ucolor, [1.0,0.5,0.7,1.0]);
+        var z = 2.0;
+        var x = WHEEL_INITIAL_POS_X;
+        for(var i = 0; i < WHEELS; i++){
+            pushMatrix()
+            if(i == 4) {
+                z = -1.0;
+                x = WHEEL_INITIAL_POS_X;
+            }
+            x += 1.5;
+            multTranslation([x,0.0,z]);
+            Axis();
+            popMatrix();
+        }
     }
 
     function render()
     {
-        if(animation) time += speed;
         window.requestAnimationFrame(render);
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -195,27 +197,16 @@ function setup(shaders)
         
         gl.uniformMatrix4fv(gl.getUniformLocation(program, "mProjection"), false, flatten(mProjection));
     
-        stack.modelView = lookAt([0,VP_DISTANCE,VP_DISTANCE], [0,0,0], [0,1,0]);
+        loadMatrix(lookAt([lookAtX,lookAtY,lookAtZ], [0,0,0], [normalX,1,0]));
         
-        pushMatrix();
-            Sun();
+        pushMatrix();   
+        Board();
         popMatrix();
-        
         pushMatrix();
-            multRotationY(360*time/MERCURY_YEAR);
-            multTranslation([MERCURY_ORBIT, 0,0]);
-            Mercury();
+        Wheels();
         popMatrix();
-
         pushMatrix();
-            multRotationY(360*time/VENUS_YEAR);
-            multTranslation([VENUS_ORBIT, 0,0]);
-            Venus();
-        popMatrix();
-
-        pushMatrix();
-            multTranslation([EARTH_ORBIT, 0,0]);
-            TerraELua();
+        WheelsAxles();
         popMatrix();
     }
 }

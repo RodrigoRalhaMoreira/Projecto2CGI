@@ -5,7 +5,7 @@
 
 export { init, draw };
 
-import { vec3, normalize, flatten } from '../../../libs/MV.js';
+import { vec3, normalize, flatten } from './MV.js';
 
 var sphere_points = [];
 var sphere_normals = [];
