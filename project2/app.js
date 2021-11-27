@@ -12,7 +12,64 @@ let gl;
 
 let mode;
 let ucolor;
-const VP_DISTANCE = 10;//12;
+
+//for the scales
+const BOARD_X_S = 1.0;
+const BOARD_Y_S = 0.5;
+const BOARD_Z_S = 1.0;
+const WHEEL_X_S = 1.1;
+const WHEEL_Y_S = 1.1;
+const WHEEL_Z_S = 1.1;
+const AXLE_X_S = 0.6;
+const AXLE_Y_S =  3.0;
+const AXLE_Z_S = 0.6;
+
+const TANK_BL_X_S = 3.2;
+const TANK_BL_Y_S = 1.0;// * 2;
+const TANK_BL_Z_S = 2.2 ;
+//BBP = back body part
+const BBP_X_S = 1.0;// *2;
+const BBP_Y_S = 1.5;
+const BBP_Z_S = TANK_BL_Z_S;
+//FBP = front body part
+const FBP_X_S = 1.0;
+const FBP_Y_S = 1.5;
+const FBP_Z_S = TANK_BL_Z_S;
+
+const TORUS_RADIUS = 0.5;
+const TORUS_DISK_RADIUS = 0.2;
+const TORUS_TOTAL_RADIUS = TORUS_RADIUS + TORUS_DISK_RADIUS; // considering the center of the circle 
+
+//for the translations
+const BOARD_CUBE_Y_T = 0.0;
+const BOARD_CUBE_Z_T = 0.0;
+
+const WHEEL_X_T = 0.0;
+const WHEEL_Y_T =  WHEEL_Z_S * TORUS_TOTAL_RADIUS;
+const WHEEL_Z_T = 0.0;
+
+const AXLE_X_T = 0.0;
+const AXLE_Y_T =  WHEEL_Z_S * TORUS_TOTAL_RADIUS;
+const AXLE_Z_T = -0.5;
+
+const TANK_BL_X_T = 4.0;
+const TANK_BL_Y_T = AXLE_Y_T + TANK_BL_Y_S/2 + AXLE_Z_S/2;
+const TANK_BL_Z_T = 1.5;
+
+const BBP_X_T = TANK_BL_X_T + TANK_BL_X_S/2 + BBP_X_S/2;
+const BBP_Y_T = TANK_BL_Y_T - (BBP_Y_S/2 - TANK_BL_Y_S/2);
+const BBP_Z_T = TANK_BL_Z_T;
+
+const FBP_X_T = TANK_BL_X_T - TANK_BL_X_S/2 - FBP_X_S/2;
+const FBP_Y_T = TANK_BL_Y_T - AXLE_Z_S/2;
+const FBP_Z_T = TANK_BL_Z_T;
+
+//for rotations
+const WHEEL_DEFAULT_X_R = 90;
+const BACK_BODY_PART_Z_R = 65;//-25;//65;
+const FRONT_BODY_PART_Z_R = -65;
+
+const VP_DISTANCE = 10;
 const LINE_SIZE = 20;
 const AXLES = 4;
 const WHEEL_INITIAL_POS_X = 0.2;
@@ -21,17 +78,17 @@ var lookAtY = VP_DISTANCE;
 var lookAtZ = VP_DISTANCE;
 var normalX = 0;
 var normalY = 1;
-var boardReds = [];
-var boardGreens = [];
-var boardBlues = [];
 var movingTank = 0.0;
 const MOVING_TANK_INC = 0.1;
-const WHEEL_ANGLE_INC = 360 * MOVING_TANK_INC / (2 * Math.PI * 0.7 * 1.1); //0.7 wheel radius and 1.1 scale 
+const WHEEL_ANGLE_INC = 360 * MOVING_TANK_INC / (2 * Math.PI * TORUS_TOTAL_RADIUS* 1.1); //0.7 wheel radius and 1.1 scale 
 var wheelAngle = 0;
 var tankAngle = 0;
 var tankHorizontalAngle = 0;
 const TANK_MIN_ANGLE = -13; 
 const TANK_MAX_ANGLE = 15; 
+var shootBullet = false;
+var bullets = [];
+
 
 function setup(shaders)
 {
@@ -112,6 +169,9 @@ function setup(shaders)
             case 'd':
                 tankHorizontalAngle += 1;
                 break;
+            case ' ':
+                shootBullet = true;
+                break;
         }
     }
     
@@ -141,47 +201,42 @@ function setup(shaders)
         gl.uniformMatrix4fv(gl.getUniformLocation(program, "mModelView"), false, flatten(modelView()));
     }
 
-    function LineBoard()
-    {   var r,g,b;
+    function BoardCube() {
+        multScale([BOARD_X_S, BOARD_Y_S, BOARD_Z_S]);
+        // Send the current modelview matrix to the vertex shader
+        uploadModelView();
+            
+        // Draw a cube
+        CUBE.draw(gl, program, mode);
+    }
+
+    function LineBoard(num)
+    {   
         for(var i = 0; i < LINE_SIZE; i++){
-            if(boardBlues.length < LINE_SIZE){
-                r = Math.random() * 0.5;
-                g = Math.random() * 0.15;
-                b = Math.random() * 0.15;
-                gl.uniform4fv(ucolor, [0.8 + r,0.6+ g,0.15+ b,1.0]);
-                boardReds[i] = r;
-                boardGreens[i] = g;
-                boardBlues[i] = b;
-           }
-           else {
-           gl.uniform4fv(ucolor, [0.8 + boardReds[i],0.6 + boardGreens[i],0.15+ boardBlues[b],1.0]);
-           }
-            multTranslation([1.0,0.0,0.0]);
-
-            // Send the current modelview matrix to the vertex shader
-            uploadModelView();
-
-            // Draw a cube
-            CUBE.draw(gl, program, mode);
+            if((i%2 == 0 && num%2 == 0) || i%2 != 0 && num%2 != 0)  gl.uniform4fv(ucolor, [1.0,1.0,1.0,1.0]);
+            else  gl.uniform4fv(ucolor, [0.3,0.0,0.5,1.0]);
+            multTranslation([BOARD_X_S,BOARD_CUBE_Y_T,BOARD_CUBE_Z_T]);
+            pushMatrix();
+            BoardCube();
+            popMatrix();
         }
     }
     function Board()
     {   
-        multScale([1.0, 0.5, 1.0]);
-        var changeLine = -LINE_SIZE/2.0;
+        var changeLine = (-LINE_SIZE/2.0) * BOARD_Z_S;
         for(var i = 0; i < LINE_SIZE; i++){
             pushMatrix();
-            multTranslation([-LINE_SIZE/2.0, 0.0, changeLine]);
-            LineBoard();
-            changeLine++;
+            multTranslation([(-LINE_SIZE/2.0) * BOARD_X_S, -BOARD_Y_S/2, changeLine]);
+            LineBoard(i);
+            changeLine+=BOARD_Z_S;
             popMatrix();
         }
     }
     function Wheel() {
-        multTranslation([0.0, 1.0, 0.0]);
+        multTranslation([WHEEL_X_T, WHEEL_Y_T, WHEEL_Z_T]);
         multRotationZ(wheelAngle);
-        multRotationX(90); 
-        multScale([1.1, 1.1, 1.1]);
+        multRotationX(WHEEL_DEFAULT_X_R); 
+        multScale([WHEEL_X_S, WHEEL_Y_S, WHEEL_Z_S]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
@@ -205,10 +260,10 @@ function setup(shaders)
     function Axle() {
         gl.uniform4fv(ucolor, [0.17,0.25,0.21,1.0]);
         pushMatrix();
-        multTranslation([0.0, 1.0, -0.5]);
+        multTranslation([AXLE_X_T, AXLE_Y_T, AXLE_Z_T]);
         multRotationZ(wheelAngle);
         multRotationX(90); 
-        multScale([0.6, 3.0, 0.6]);
+        multScale([AXLE_X_S, AXLE_Y_S, AXLE_Z_S]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
@@ -218,14 +273,14 @@ function setup(shaders)
         popMatrix();
 
         // Draw the two associated wheels
-       Wheels();
+        //Wheels();
     }
 
     function WheelsAxles() {
         var z = 2.0;
         var x = WHEEL_INITIAL_POS_X;
         for(var i = 0; i < AXLES; i++){
-            pushMatrix()
+            pushMatrix();
             if(i == 4) {
                 z = -1.0;
                 x = WHEEL_INITIAL_POS_X;
@@ -243,9 +298,10 @@ function setup(shaders)
         pushMatrix();
             MiddlePart();
         popMatrix();
+        /*
         pushMatrix();
             TopPart();
-        popMatrix();
+        popMatrix();*/
     }
 
     function BottomPart() {
@@ -255,26 +311,24 @@ function setup(shaders)
     }
     
     function BackBodyPart() {
-        pushMatrix();
-        gl.uniform4fv(ucolor, [0.14,0.22,0.0,1.0]);
-        multTranslation([6.0, 1.2, 1.5]);
-        multRotationZ(65); 
-        multScale([1.0, 1.5, 2.3]);
+        gl.uniform4fv(ucolor, [0.13,0.20,0.0,1.0]);
+        multTranslation([BBP_X_T, BBP_Y_T, BBP_Z_T]);
+        multRotationZ(BACK_BODY_PART_Z_R); 
+        multScale([BBP_X_S, BBP_Y_S, BBP_Z_S]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
 
         // Draw a cube
         CUBE.draw(gl, program, mode);
-        popMatrix();
     }
 
     function FrontBodyPart() {
         pushMatrix();
-        gl.uniform4fv(ucolor, [0.14,0.22,0.0,1.0]);
-        multTranslation([2.0, 1.2, 1.5]);
-        multRotationZ(-65); 
-        multScale([1.0, 1.5, 2.3]);
+        gl.uniform4fv(ucolor, [0.13,0.20,0.0,1.0]);
+        multTranslation([FBP_X_T, FBP_Y_T, FBP_Z_T]);
+        multRotationZ(FRONT_BODY_PART_Z_R); 
+        multScale([FBP_X_S, FBP_Y_S, FBP_Z_S]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
@@ -285,21 +339,10 @@ function setup(shaders)
     }
 
     function TankBodyLow() {
-        gl.uniform4fv(ucolor, [0.13,0.20,0.0,1.0]);
-        multTranslation([3.8, 1.0, 1.5]);
-        multScale([4.5, 1.0, 2.2]);
-
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
-
-        // Draw a cube
-        CUBE.draw(gl, program, mode);
-    }
-
-    function TankBodyHigh() {
-        gl.uniform4fv(ucolor, [0.14,0.22,0.0,1.0]);
-        multTranslation([4.0, 1.5, 1.5]);
-        multScale([3.05, 1.0, 2.3]);
+        //gl.uniform4fv(ucolor, [0.13,0.20,0.0,1.0]);
+        gl.uniform4fv(ucolor, [0.13,0.90,0.8,1.0]);
+        multTranslation([TANK_BL_X_T, TANK_BL_Y_T, TANK_BL_Z_T]);
+        multScale([TANK_BL_X_S, TANK_BL_Y_S, TANK_BL_Z_S]);
 
         // Send the current modelview matrix to the vertex shader
         uploadModelView();
@@ -310,16 +353,13 @@ function setup(shaders)
 
     function MiddlePart() {
         pushMatrix();
-        TankBodyLow();
+            TankBodyLow();
         popMatrix();
         pushMatrix();
-        BackBodyPart();
+            BackBodyPart();
         popMatrix();
         pushMatrix();
-        FrontBodyPart();
-        popMatrix();
-        pushMatrix();
-        TankBodyHigh();
+            FrontBodyPart();
         popMatrix();
     }
     
@@ -404,9 +444,45 @@ function setup(shaders)
         Antenne();
         popMatrix();
     }
+    function Screw(){
+        gl.uniform4fv(ucolor, [0.0,0.0,0.0,1.0]);
+        multScale([0.2, 0.2, 0.05]);
+
+        // Send the current modelview matrix to the vertex shader
+        uploadModelView();
+
+        // Draw a cube
+        SPHERE.draw(gl, program, mode);
+    }
+    function CircularScrews(){
+        pushMatrix();
+        multTranslation([4.0, 2.75, 0.8]);
+        Screw();
+        popMatrix();
+        pushMatrix();
+        multTranslation([4.0, 2.75, 2.2]);
+        Screw();
+        popMatrix();
+    }
+
+    function InclinedRectangle() {
+        gl.uniform4fv(ucolor, [0.10,0.37,0.25,1.0]);
+        multTranslation([5.8, 2.66, 1.5]);
+        multRotationZ(45); 
+        multScale([0.5, 0.5, 1.4]);
+
+        // Send the current modelview matrix to the vertex shader
+        uploadModelView();
+
+        // Draw a cube
+        CUBE.draw(gl, program, mode);
+    }
     function TopRectangle(){
         pushMatrix();
             InclinedSquare();
+        popMatrix();
+        pushMatrix();
+            InclinedRectangle();
         popMatrix();
         pushMatrix();
             TopCircle();
@@ -419,6 +495,9 @@ function setup(shaders)
         popMatrix();
         pushMatrix();
             Antennes();
+        popMatrix();
+        pushMatrix();
+            CircularScrews();
         popMatrix();
         pushMatrix();
             Canon();
@@ -454,27 +533,36 @@ function setup(shaders)
     function BulletCanonPart() {
         
         pushMatrix();
-        gl.uniform4fv(ucolor, [0.0,0.0,0.0,1.0]);
-        multTranslation([0.0, 2.65, 1.5]);
-        multScale([0.5, 0.35, 0.3]);
+            gl.uniform4fv(ucolor, [0.0,0.0,0.0,1.0]);
+            multTranslation([0.0, 2.65, 1.5]);
+            multScale([0.5, 0.35, 0.3]);
 
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
+            // Send the current modelview matrix to the vertex shader
+            uploadModelView();
 
-        // Draw a cube
-        CUBE.draw(gl, program, mode);
+            // Draw a cube
+            CUBE.draw(gl, program, mode);
         popMatrix();
         
         pushMatrix();
-        gl.uniform4fv(ucolor, [0.13,0.18,0.21,1.0]);
-        multTranslation([-0.3, 2.65, 1.5]);
-        multScale([0.1, 0.4, 0.5]);
+            gl.uniform4fv(ucolor, [0.13,0.18,0.21,1.0]);
+            multTranslation([-0.3, 2.65, 1.5]);
+            multScale([0.1, 0.4, 0.5]);
 
-        // Send the current modelview matrix to the vertex shader
-        uploadModelView();
+            // Send the current modelview matrix to the vertex shader
+            uploadModelView();
 
-        // Draw a cube
-        CUBE.draw(gl, program, mode);
+            // Draw a cube
+            CUBE.draw(gl, program, mode);
+
+            if(shootBullet){
+                pushMatrix();
+                multScale([10, 10/4, 2]);
+                createBullet();
+                multScale([0.1, 0.4, 0.5]);
+                popMatrix();
+                shootBullet = false;
+            }
         popMatrix();
     }
 
@@ -492,19 +580,28 @@ function setup(shaders)
 
     function TopPart(){
         pushMatrix();
-        TopCircleBase();
+            TopCircleBase();
         popMatrix();
         pushMatrix();
-        multTranslation([4.2, 2.4, 1.5]);
-        multRotationZ(tankAngle);
-        multTranslation([-4.2, -2.4, -1.5]);
-        multTranslation([4.2, 2.4, 1.5]);
-        multRotationZ(-tankAngle);
-        multRotationY(tankHorizontalAngle);
-        multRotationZ(tankAngle);
-        multTranslation([-4.2, -2.4, -1.5]);
-        TopRectangle();
+            multTranslation([4.2, 2.4, 1.5]);
+            multRotationZ(tankAngle);
+            multTranslation([-4.2, -2.4, -1.5]);
+            multTranslation([4.2, 2.4, 1.5]);
+            multRotationZ(-tankAngle);
+            multRotationY(tankHorizontalAngle);
+            multRotationZ(tankAngle);
+            multTranslation([-4.2, -2.4, -1.5]);
+            TopRectangle();
         popMatrix();
+    }
+    function createBullet() {
+        multScale([0.35, 0.35, 0.35]);
+
+        // Send the current modelview matrix to the vertex shader
+        uploadModelView();
+
+        // Draw a cube
+        SPHERE.draw(gl, program, mode);
     }
 
     function render()
